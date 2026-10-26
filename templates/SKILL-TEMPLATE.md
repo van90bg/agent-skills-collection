@@ -55,6 +55,7 @@ Replace with TL;DR + table with `file:line` + fix.
 
 - `../other-skill/SKILL.md` — related skill
 - `references/details.md` — extra details (if any)
+- Attribution line if adapted from an external MIT work (source repo, author, license, what changed).
 
 ## Examples (optional)
 

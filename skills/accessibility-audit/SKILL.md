@@ -64,4 +64,4 @@ metadata:
 
 ## Output Format
 
-`TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers. Group critical (missing labels, alt, contrast, traps, focus) first. See `AGENTS.md §8` for full format if host repo defines it.
+`TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers. Group critical (missing labels, alt, contrast, traps, focus) first. See the host repo's `AGENTS.md` if present, otherwise `../audit-report-format/SKILL.md`.

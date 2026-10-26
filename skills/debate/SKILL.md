@@ -172,4 +172,4 @@ Confidence thresholds: Blocker/security always reported; Major ≥70; Minor/Nit 
 
 - AgentSkills spec: https://opencode.ai/docs/skills
 - Template: `templates/SKILL-TEMPLATE.md` (in this repo)
-- AGENTS.md §8 (if host repo defines it): output style override
+- Host repo `AGENTS.md` (if defined): output style override

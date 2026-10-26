@@ -4,7 +4,7 @@ description: Comprehensive UI/UX audit for webapps — design language consisten
 license: MIT
 metadata:
   author: van90bg
-  version: "1.0"
+  version: "1.1"
   category: web
   triggers: ["ui audit", "ux audit", "design review", "accessibility audit", "wcag", "performance audit", "cdp verify"]
 ---
@@ -15,6 +15,7 @@ metadata:
 
 ## Core Principles
 
+0. **Fail fast by tier:** static → runtime → human. A red static tier stops the audit there; conclusions drawn on an invalid base are noise.
 1. **Measure, don't imagine:** geometry `getBoundingClientRect` + computed style via CDP is truth; screenshot is only for feel.
 2. **Don't fix before user sees the full picture.**
 3. **Deterministic edits** if fixing (CRLF handling, `utf-8-sig` read / `utf-8` write, `newline=''`, assert `count==1`).
@@ -31,6 +32,48 @@ npm test              # logic tests — only if logic touched
 ```
 
 Record PASS/FAIL → audit focuses on FAILs + what scripts don't cover (a11y, perf, design language).
+
+## Phase 0b — Map Every Tier
+
+An audit that reads only the view layer misses half the failures. Read every tier the project has:
+
+| Tier | Read | Look for |
+|---|---|---|
+| Frontend | view modules, shared JS, styles, HTML shell | state/render, event and timer leaks, overflow, token drift |
+| Adapter | RPC shim / API client | resolve-vs-reject, queue order, timeout/watchdog, idempotency, error mapping |
+| Server | services, repositories, config, manifest | role gates, locks, cache, batch I/O, schema/header, timezone |
+| Build | file manifest, include order, generated output | files not shipped, mock shipped to prod, wrong include order |
+| Tests | contract, arity, build, integrity tests | which invariants are actually guarded |
+
+Run the gates before reading deeply — a red baseline is a **finding**, not a guess. Contract/invariant checks to adapt:
+
+| Concern | Check |
+|---|---|
+| Payload shape | contract-shape test + allowlist + baseline |
+| API signature | arity test + coverage (every `*Api` non-throwing) |
+| Include order / no mock in prod | build-order + include-allowlist |
+| Frontend ↔ manifest | manifest test + build view map |
+| Server loads, no SyntaxError | load every `.gs` in a sandbox |
+| Row/task integrity, header fail-closed | integrity test |
+
+## Phase 0c — Inventory the Gates You Actually Have
+
+Before writing "verified", list which dimensions have an automated gate, which are manual, and which are absent. Never imply coverage that does not exist.
+
+| Dimension | Example gate | Status |
+|---|---|---|
+| Raw values outside tokens; dead tokens | `audit:tokens` | present / manual / absent |
+| Component JS↔CSS two-way; duplicates | `audit:components`, `audit:dupes` | |
+| Touch floor across viewports | `audit:touch` | |
+| Breakpoints match tokens | `audit:breakpoints` | |
+| Platform capability (hover/tap/overscroll/theme) | `audit:platform` | |
+| a11y (forms, cards, copy, states, keyboard, contrast) | `verify:a11y` | |
+| Flow regressions | `verify:flow` | |
+| Port fidelity vs production | `audit:parity` | |
+| Docs numbers match gate output | `verify:docs` | |
+| Visual regression (view × viewport × theme) | screenshot matrix | |
+
+Mark each row honestly. A missing gate becomes a manual check in the report, not a silent pass.
 
 ## Phase 1 — Design Language Audit
 
@@ -49,6 +92,8 @@ Start from `component-inventory.md` (6 groups). Check shared components across v
 CDP verify: measure card cells (`::before` content, `white-space`, `grid-*`, font, `text-align`) across tables. Known pitfall: desktop column rule `td:nth-child(n)` with specificity `1,1,1` beats mobile base `1,0,2` regardless of order — must override with `tbody td:nth-child(n)` `1,2,1` + `left`.
 
 **Integrated from archived prompts:** Token-first analysis (grep tokens/colors/spacing/type/shadows/radii + read 5–10 components before deciding); **AI slop blacklist:** glassmorphism everywhere, cyan-purple gradient, gradient text, repeated icon+heading card grid, nested cards, large rounded icons above headings, hero metric layout, center-align all, pure #000/#fff, bounce easing — each = P1 if violated.
+
+**Copy and state consistency:** the same action uses one verb in the button, toast, and dialog title; every error states what happened + what to do next; skeleton/empty/error/disabled states exist for every data region. See `../design-taste/references/operational-copy.md`.
 
 ## Phase 2 — Accessibility Audit (WCAG 2.2)
 
@@ -98,18 +143,31 @@ When multiple agents audit in parallel, use 3 non-overlapping layers:
 | 2 — Runtime CDP | Confirm claims + behavioral bugs | CDP click + geometry (desktop + mobile) | P0/P1 confirmed (repro) — only layer that can assign P0 definitively |
 | 3 — Consistency | SSOT: one concept → one label | SSOT table + grep UI strings + a11y | P1/P2 inconsistency |
 
-**Rules:** dedup to one row per issue (record first finder); P0 from layer 1/3 needs layer 2 confirmation; claims about deleted/changed attrs → false positive; intentional behavior (commented) → not a bug; layer 1 claims marked `[unverified]`.
+**Rules:** dedup to one row per issue (record first finder); P0 from layer 1/3 needs layer 2 confirmation; claims about deleted/changed attrs → false positive; intentional behavior (commented) → not a bug; layer 1 claims marked `[unverified]`; re-derive every agent claim before it enters the table (`verify-subagent-claims`).
+
+## Phase 6 — Optimize (only after approval)
+
+- **Simplify:** early guard clauses, merge duplicate helpers, delete dead code / `console.log` / comment noise.
+- **Render:** do not full re-render large tables; paginate; animate only `transform`/`opacity`.
+- **GAS/Sheets:** `getValues()` once → in-memory → `setValues()`; no `getValue`/`setValue`/`appendRow` in loops; mutations under `LockService` with the smallest scope; cache only through the project's cache helpers.
+- **Contract:** editing the client API shim **is** a contract change — lock it with a shape test and record the payload change in the plan.
+- **Boundaries:** never call `google.script.run` from view code (the adapter owns it); mock code never ships to `dist/`.
 
 ## References
 
+- `references/state-matrix.md` — viewport × state matrix for kiosk/operational UIs.
 - `../gas-webapp-review/SKILL.md` — backend failure modes
 - `../systematic-debugging/SKILL.md` — debugging workflow
+- `../verify-subagent-claims/SKILL.md` — evidence gate for multi-agent findings
+- `../responsive-craft/SKILL.md` — prevention layer for layout
+- `../design-taste/SKILL.md` — aesthetic judgment
+- `../audit-report-format/SKILL.md` — report contract
 - `component-inventory.md` — component inventory (if present)
 - System skills: `accessibility`, `performance`, `design-system`
 
 ## Output Format
 
-Follow host `AGENTS.md §8` if present, otherwise: `TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers 🔴🟠🟡 + Rule check. See wireframe/redesign supplements below.
+Follow the host repo's `AGENTS.md` if present, otherwise `../audit-report-format/SKILL.md`: `TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers 🔴🟠🟡 + Rule check. See wireframe/redesign supplements below.
 
 ## Wireframe for UI Proposal Review
 

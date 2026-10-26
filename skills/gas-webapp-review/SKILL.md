@@ -4,7 +4,7 @@ description: Review Google Apps Script webapps served via HtmlService. Use when 
 license: MIT
 metadata:
   author: van90bg
-  version: "1.0"
+  version: "1.1"
   category: gas
   triggers: ["gas review", "apps script audit", "sheets webapp", "htmlservice review", "lockservice", "cacheservice"]
 ---
@@ -23,7 +23,7 @@ metadata:
 ## Failure Modes Checklist (GAS webapps)
 
 - `getUserRole()` falling back to `'admin'` on exception — must fail closed.
-- Lock helper swallowing timeout and returning `null` → callers must check `{__lockError:true}` and surface user message.
+- Lock helper swallowing timeout and returning `null` → callers must check `{__lockError:true}`, **stop the mutation**, and surface a user message. Running the write outside the lock is worse than failing.
 - `genTaskId() = Date.now().toString(36)+Math.random()` (~1ms) — use `Utilities.getUuid()` (RFC4122 v4).
 - Client cooldown early-return bypass via clock skew — server is sole authority.
 - Blind `CacheService.put(key)` losing concurrent writes — must read-merge-write.
@@ -43,6 +43,12 @@ metadata:
 - Client flush gate `_pendingScanCount` — skip RPC when 0 (~240 calls/hour/tab saved).
 - `executeAs USER_ACCESSING` requires server gate on every mutator (client hiding button is not a gate).
 - Cooldown value mismatch client vs server — single source of truth.
+- **Gate inside `try`** — a `requireRole_` call wrapped in a broad `try/catch` can be swallowed and execution continues. The gate must run before the guarded block, or the catch must rethrow authorization failures.
+- **Missing idempotency** — every write API needs an idempotency guard (`idemGuarded_` or equivalent) keyed by API + user + client key, with a bounded TTL. A retried scan after a timeout must return the prior result, not write a second row.
+- **GAS I/O constitution** — `getValues()` the whole range once → process in memory → `setValues()` once. `getValue` / `setValue` / `appendRow` inside a loop is a P1 (quota + latency), and under a lock it is a P0 for contention.
+- **Ad-hoc cache access** — the only cache path is the project's `cachedJson_` / `cachePut_` helpers. Direct `CacheService` calls bypass invalidation and read-merge-write.
+- **Anonymous kiosk = operator** — a client-hidden button is not a gate. Any mutator reachable from a kiosk session still enforces the server-side role/station check.
+- **Server clock is the source** — never trust a client timestamp for cooldown, ordering, or audit fields; use server time plus an explicit grace window.
 - **Supplemental (archived prompts):**
   - Every **global** function callable via `google.script.run` (not only `*Api` wrappers) must have `requireRole_(min)` + DEFENSE try/catch. Report all missing gates.
   - `LOG_COLS`/sheet column sync between `ensureSheets_` and all `setValues`/`appendRow` — drift = silent data corruption.
@@ -51,6 +57,8 @@ metadata:
   - **Cross-boundary:** every type/value crossing a boundary (`google.script.run` payload, queue, event) needs an explicit branch at the consumer dispatch (switch/router/handler) — silent drop = P0. *(criteria: Provable, Actionable, Unintentional, Introduced in patch, No hidden assumptions, Proportionate rigor)*
 
 ## Minimal UI/A11y Checks
+
+Backend reviewer's quick pass only. For a full UI/a11y audit, use `webapp-ui-ux-audit`.
 
 - `th[scope="col"]` · sort headers `aria-sort` · filter `role="listbox"` + `aria-label` · decorative icons `aria-hidden="true"` · dynamic regions `aria-live="polite"` (remove from static spinners) · `prefers-reduced-motion` for scan-line.
 
@@ -68,12 +76,15 @@ metadata:
 
 For high-stakes reviews (pre-deploy). Scope doc must be self-contained (reference models have no file access). Dispatch via MoA provider, then host merges (dedupe, keep severity, flag disagreements).
 
-**Repo-specific:** run `gh run list --limit 5` before concluding — CI may be late (user tests stale GAS build).
+**Before concluding "the fix didn't work":** check the deployed build, not just the local tree. Run `gh run list --limit 5`, then verify the live web-app URL / deployment SHA. CI lags and users often test a stale deployment; a correct fix on an old build looks like a failed fix.
 
 ## Output Format
 
-Follow `AGENTS.md §8` in the host repo if present, otherwise: `TL;DR` 1 line (`✅ Approve — 0 P0 · 2 P1`) + table `| # | Sev | Issue | Location | Conf | Fix |` + markers 🔴 P0 · 🟠 P1 · 🟡 P2 + Rule check `A/B/C`. Confidence: Blocker always, Major ≥70, Minor/Nit ≥80. Empty: `✅ Clean — 0 P0 · 0 P1 · 0 P2 (scope)`.
+Follow the host repo's `AGENTS.md` if present, otherwise `../audit-report-format/SKILL.md`: `TL;DR` 1 line (`✅ Approve — 0 P0 · 2 P1`) + table `| # | Sev | Issue | Location | Conf | Fix |` + markers 🔴 P0 · 🟠 P1 · 🟡 P2 + Rule check `A/B/C`. Confidence: Blocker always, Major ≥70, Minor/Nit ≥80. Empty: `✅ Clean — 0 P0 · 0 P1 · 0 P2 (scope)`.
 
 ## References
 
 - `examples/rollcall/` — real-world GAS attendance webapp (17 .gs + 9 HtmlService modules, 261 tests) as worked example.
+- `../webapp-ui-ux-audit/SKILL.md` — full UI/a11y/performance audit.
+- `../security-review/SKILL.md` — source→sink security pass.
+- `../audit-report-format/SKILL.md` — report contract.

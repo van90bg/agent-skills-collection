@@ -64,4 +64,4 @@ with open(path, 'w', encoding='utf-8', newline='') as f:
 
 ## Output Format
 
-Follow `AGENTS.md §8` if present: `TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers 🔴🟠🟡 + Rule check. See host repo for full spec.
+Follow the host repo's `AGENTS.md` if present, otherwise `../audit-report-format/SKILL.md`: `TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers 🔴🟠🟡 + Rule check. See host repo for full spec.

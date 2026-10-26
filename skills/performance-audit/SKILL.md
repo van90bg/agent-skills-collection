@@ -65,4 +65,4 @@ Commands: `npx lighthouse https://example.com --output html`, `import {onLCP,onI
 
 ## Output Format
 
-`TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers. Prioritize by Core Web Vitals impact. See host `AGENTS.md §8` if present.
+`TL;DR` + table `| # | Sev | Issue | Location | Fix |` + markers. Prioritize by Core Web Vitals impact. See the host repo's `AGENTS.md` if present, otherwise `../audit-report-format/SKILL.md`.
