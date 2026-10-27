@@ -23,12 +23,13 @@
 | 19 | `ui-redesign` | `web` | `redesign`, `UI upgrade`, `modernize UI`, `visual refresh`, `restyle view` | `redesign` (soc-portal-gas) |
 | 20 | `ux-flow-designer` | `web` | `user flow`, `user journey`, `screen map`, `use case`, `navigation flow`, `new view` | `ux-flow-designer` (soc-portal-gas) ← `ThomasPraun/ux-flow-designer` |
 | 21 | `multi-agent-orchestration` | `core` | `orchestrate`, `delegate`, `multi-agent`, `lead coordinator`, `subagent`, `audit`, `refactor`, `plan approval` | `multi-agent-orchestration` (soc-portal-gas) + host `AGENTS.md` orchestration law |
+| 22 | `debate-paseo` | `core` | `debate-paseo`, `multi-head deliberation`, `converge`, `red-team`, `paseo agents` | `debate-paseo` (Paseo-native sibling of `debate`) |
 
 ## Categories
 
 - `gas` — Google Apps Script + Sheets specific (2 skills)
 - `web` — Web UI/UX, a11y, perf, responsive/touch, design (9 skills)
-- `core` — Debugging, exploration, research, security, planning, reporting, verification, orchestration (10 skills)
+- `core` — Debugging, exploration, research, security, planning, reporting, verification, orchestration, deliberation (11 skills)
 
 ## Output Format (shared)
 
