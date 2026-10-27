@@ -4,7 +4,7 @@ description: Three-model deliberation through subagents — consensus debate (de
 license: MIT
 metadata:
   author: van90bg
-  version: "1.0"
+  version: "1.1"
   category: core
   triggers: ["debate", "brainstorm", "critique", "converge", "red-team", "stress-test", "review", "audit"]
 ---
@@ -26,23 +26,28 @@ Not for: yes/no questions with a single factual answer (just ask), or when you n
 
 ## Model selection (flexible — no file edits needed)
 
-Task calls use the generic `debate-head` agent with a per-call `model` override (`provider/model`). Suggested pool (verified working):
+Task calls use the generic `debate-head` agent with a per-call `model` override (`provider/model`).
+**Never copy a model id from this file** — the pool moves as free tiers come and go. Read it live and
+pick three IDs from three different providers when possible:
 
-- opencode/step-5-preview-free (Zen)
-- agnes/agnes-2.5-flash (Agnes direct)
-- agnes/agnes-3.0-flash (Agnes direct)
-- kenari/nemotron-3-super-120b-a12b:free
-- tokenharbor/claude-haiku-5.5:free
-- kenari/mimo-v2-6-flash:free
-- tokenharbor/deepseek-v4.1-flash:free
+```bash
+opencode models | grep -E 'free|flash|haiku' | head -20
+```
 
-Default trio: opencode/step-5-preview-free + agnes/agnes-3.0-flash
-+ tokenharbor/claude-haiku-5.5:free. Override with any three
-`provider/model` IDs (full IDs recommended; keywords like `mimo`,
-`haiku`, `nemotron-super` matched against the pool):
+Measured on this host; re-verify with the command above before relying on any of them:
+
+- `opencode/deepseek-v4.1-flash-free`, `opencode/flint-40b-free`, `opencode/glm-5.3-flash-free`
+- `agnes/agnes-3.0-flash`, `agnes/agnes-2.5-flash`
+- `tokenharbor/claude-haiku-5.5:free`
+- `console-nvidia/stepfun-ai/step-5-preview`
+
+Default trio: `opencode/deepseek-v4.1-flash-free` + `agnes/agnes-3.0-flash`
++ `tokenharbor/claude-haiku-5.5:free`. Override with any three
+`provider/model` IDs (full IDs recommended; keywords like `flint`,
+`haiku`, `agnes` matched against the pool):
 
 ```text
-/debate heads=kenari/mimo-v2-6-flash:free,haiku-5.5,agnes-3.0 <question>
+/debate heads=opencode/flint-40b-free,haiku-5.5,agnes-3.0 <question>
 ```
 
 No `heads=` → default trio. One provider per role when possible (don't
