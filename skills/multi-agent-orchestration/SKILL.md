@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.1"
+  version: "1.2"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -144,6 +144,19 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 - **Mechanism:** read the role definitions from whichever config surface the harness really reads (or use
   its profile-listing tool); delegate phases strictly in order; force read-only mode for the planner, the
   reviewer and both debate heads; judge each subagent's evidence before advancing a phase.
+- **Pi without Paseo, still Model 1:** the `pi` npm package ships `examples/extensions/subagent` — a tool
+  named `subagent` with single / parallel / chain modes where every child is a **separate `pi` process**
+  with its own context, driven by agent files in `~/.pi/agent/agents/*.md` (a `model:` line pins the
+  child's model; omit it to inherit). Wire it up without any MCP server:
+
+  ```bash
+  PKG="$(npm root -g)/@earendil-works/pi-coding-agent/examples/extensions/subagent"
+  mkdir -p ~/.pi/agent/extensions/subagent ~/.pi/agent/agents
+  ln -sfn "$PKG/index.ts" "$PKG/agents.ts" ~/.pi/agent/extensions/subagent/
+  ```
+
+  Verify with the parent stripped of its own read tools, so the facts can only come from a child:
+  `pi -p --tools subagent "use the subagent tool with agent scout to report X with file:line"`.
 
 ### Model 2 — Mode / role switching inside one session
 - **Signal:** the harness runs a single chat session but can switch persona/mode with permission limits.
@@ -167,9 +180,10 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 
 ### Model 3 — Single-agent sequential fallback
 - **Signal:** the harness has neither a subagent tool nor mode switching (e.g. a **standalone** `pi` CLI
-  session with no Paseo MCP server, Aider, a plain CLI chat). Pi ships no native subagent tool and no mode
-  switch, so it lands here *unless* something hands it a subagent tool — Paseo does exactly that. Inspect
-  the tool schema before choosing: an empty `pi mcp list` does not rule Model 1 out.
+  session with no Paseo MCP server and no `subagent` extension, Aider, a plain CLI chat). Pi ships no
+  native subagent tool and no mode switch, so it lands here *unless* something hands it a subagent tool —
+  Paseo and the `subagent` extension both do. Inspect the tool schema before choosing: an empty
+  `pi mcp list` does not rule Model 1 out.
 - **Mechanism:** the same agent runs the whole pipeline by context-shifting between roles, and must hold
   each role's boundary honestly:
   - Phase 1 — act as the planner (read-only; plan per the repo template; run the plan gate).
@@ -200,6 +214,9 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
   guard — keep it in every analysis-only delegation.
 - **Hardware:** Intel Pentium Silver J5005 (4 cores, 15 GB RAM) shared with the self-hosted `dietpi-dev`
   CI runner — the reason the sequential rule is strict.
+- **Delegation paths, cheapest first:** (1) Paseo `create_agent` — real model diversity per phase; (2) the
+  Pi `subagent` extension — same model, isolated context, still a separate process; (3) Model 3 in one
+  session. Pick (1) when independence matters (Phase 4 review, debate heads), (3) only for small work.
 
 ## Self-Acceptance Checklist
 
