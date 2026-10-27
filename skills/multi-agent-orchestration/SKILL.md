@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.5"
+  version: "1.6"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -217,6 +217,34 @@ magpie usage --csv 7d | grep 'group/se-'     # requested_model=group/se-coder  s
 A role whose requests show a *different family* than its group intends is a group-ordering bug, not a
 model-quality judgement.
 
+#### Editing group members needs no follow-up edit — but four things can still bite
+
+Because every pin (Paseo profile, Pi agent file) names `group/<role-id>` and never a member, changing what a
+role runs is **one command and nothing else** — no profile edit, no agent-file edit, no restart:
+
+```bash
+magpie group set se-coder models=<new chain>   # pins still say group/se-coder → they keep working
+```
+
+What does *not* follow automatically:
+
+1. **A member id can lie about the model it serves.** `autoclaw/zai_auto` answers as
+   `deepseek/deepseek-v4-flash-vision-exp`; the router happily reports the id you asked for, so a group can
+   silently break its own family policy. Probe identity, don't trust the label:
+   `bash scripts/audit-pins.sh --probe` (or read `served_model` in `magpie usage --csv`).
+2. **Thinking levels are per member and get downgraded silently.** A group's `levels` is what agents are
+   *offered*; a member that lacks the level is sent its nearest (measured: profile pinned `xhigh`, the
+   served request logged `effort=high` on a member whose max is `high`). If a role's reasoning level is part
+   of the contract, put a member that actually supports it first.
+3. **A dead primary costs a round-trip on every call.** Quota-exhausted members answer `429` before
+   failover; keep them last or drop them.
+4. **Advertised context can shrink.** A group's context is derived from its members, so adding a small-context
+   model can lower the window the agent is told it has — set `context=` explicitly if that matters.
+
+Structural pins (does the id exist, is it the role's own group, is the thinking level offered, does every
+profile have a Pi twin) are cheap to re-check and catch 1, 3 and 4 partially: run `audit-pins.sh` after any
+member edit; run it with `--probe` when you changed a *provider*, not just a model.
+
 #### Probe the model pin before the first delegation
 
 A `model:` line in a Pi agent file, or a `model` in a Paseo profile, is a **claim about the provider's
@@ -365,6 +393,7 @@ gets silently skipped.
 ## References
 
 - `scripts/audit-pins.sh` — one-shot audit of every profile/agent model pin against the live router
+  (`--probe` also verifies each group member serves the model its id claims)
 - `../verify-subagent-claims/SKILL.md` — re-derive subagent claims before trusting them
 - `../audit-report-format/SKILL.md` — canonical report contract for the Phase 4 output
 - `../writing-plans/SKILL.md` — how to write the Phase 1 plan

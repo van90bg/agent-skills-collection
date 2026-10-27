@@ -4,8 +4,16 @@
 #
 # Checks:
 #   1. Paseo daemon.agentProfiles  -> provider enabled + model id exists + thinking level supported
-#   2. Pi agent files (~/.pi/agent/agents/*.md) -> model id exists
-#   3. Magpie routing groups used by those pins -> id exists, levels cover the pins
+#                                    + the model is the role's own routing group (group/<role-id>)
+#   2. Pi agent files (~/.pi/agent/agents/*.md) -> same two checks
+#   3. Cross-surface coverage      -> every profile id has a pi agent twin
+#   4. --probe                     -> ask each group member what model it *really* serves
+#                                     (an id can lie: autoclaw/zai_auto serves deepseek-vision-exp)
+#
+# Usage:
+#   audit-pins.sh                 structural checks only (fast, no tokens)
+#   audit-pins.sh --probe         also probe the first 2 members of every role group
+#   audit-pins.sh --probe-all     probe every member (costs one tiny request per member)
 #
 # Exit 0 = every pin resolves. Exit 1 = at least one pin is dead (delegation will 404).
 # Run it after any model/provider change in the Paseo UI or the magpie router.
@@ -22,9 +30,16 @@ import urllib.request
 
 PI_DIR = os.environ.get("PI_CODING_AGENT_DIR", os.path.expanduser("~/.pi/agent"))
 PASEO_CONFIG = os.environ.get("PASEO_CONFIG", os.path.expanduser("~/.paseo/config.json"))
+MAGPIE_CONFIG = os.environ.get(
+    "MAGPIE_CONFIG", os.path.expanduser("~/.config/magpie/providers.json")
+)
+ARGS = set(sys.argv[1:])
+PROBE_ALL = "--probe-all" in ARGS
+PROBE = PROBE_ALL or "--probe" in ARGS
 
 problems: list[str] = []
 notes: list[str] = []
+warnings: list[str] = []
 
 
 def load(path):
@@ -56,6 +71,89 @@ def router_catalogue():
     return cat
 
 
+def router_base():
+    models_json = load(os.path.join(PI_DIR, "models.json"))
+    magpie = models_json.get("providers", {}).get("magpie")
+    return (magpie or {}).get("baseUrl", "").rstrip("/")
+
+
+def norm(name: str) -> str:
+    """Loose model identity: drop the vendor prefix and every separator."""
+    s = name.strip().lower()
+    if "/" in s:
+        s = s.rsplit("/", 1)[1]
+    for token in (":free", "-free", ":fast", ".", "_", "-", " "):
+        s = s.replace(token, "")
+    return s
+
+
+def probe_member(model: str):
+    """Ask the router what this member actually serves. Returns (served, error)."""
+    base = router_base()
+    if not base:
+        return None, "no magpie baseUrl in models.json"
+    body = json.dumps(
+        {
+            "model": model,
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{base}/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            payload = json.load(resp)
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc)
+        try:  # HTTPError carries the router's JSON body: useful for quota messages
+            msg = exc.read().decode("utf-8", "replace")[:160]  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
+        return None, msg
+    if payload.get("error"):
+        return None, str(payload["error"])[:160]
+    return payload.get("model"), None
+
+
+def probe_groups(cat):
+    """Compare each role group's member ids with the model the router really served."""
+    conf = load(MAGPIE_CONFIG)
+    groups = {g.get("id"): g for g in (conf.get("groups") or []) if isinstance(g, dict)}
+    role_groups = [gid for gid in groups if f"group/{gid}" in cat]
+    if not role_groups:
+        problems.append(f"{MAGPIE_CONFIG}: no routing groups found to probe")
+        return
+    for gid in sorted(role_groups):
+        members = groups[gid].get("members") or []
+        plain = [
+            m
+            for m in members
+            if isinstance(m, str) and not m.startswith("group/") and "*" not in m
+        ]
+        limit = len(plain) if PROBE_ALL else min(2, len(plain))
+        for idx, member in enumerate(plain[:limit]):
+            served, err = probe_member(member)
+            if err:
+                position = "primary" if idx == 0 else f"member #{idx + 1}"
+                warnings.append(f"group/{gid} {position} '{member}' is not answering: {err.strip()[:140]}")
+                if idx == 0:
+                    warnings.append(
+                        f"group/{gid}: a dead primary costs a wasted round-trip on every call — move "
+                        f"'{member}' to the end of the list"
+                    )
+                continue
+            if norm(served or "") != norm(member) and norm(served or "") not in norm(member) \
+                    and norm(member) not in norm(served or ""):
+                problems.append(
+                    f"group/{gid} member '{member}' actually serves '{served}' — the id lies, so the "
+                    f"group's family policy is not what it says"
+                )
+
+
 def check_model(cat, model_id, where, thinking=None):
     if model_id not in cat:
         hint = ""
@@ -80,6 +178,8 @@ cat = router_catalogue()
 if not cat:
     print("\n".join(problems) or "router unreachable")
     sys.exit(1)
+if PROBE:
+    probe_groups(cat)
 
 # 1. Paseo profiles
 paseo = load(PASEO_CONFIG)
@@ -157,10 +257,16 @@ for p in profiles:
 
 for n in notes:
     print(f"NOTE  {n}")
+for w in warnings:
+    print(f"WARN  {w}")
 for p in problems:
     print(f"FAIL  {p}")
 if problems:
-    print(f"\n{len(problems)} problem(s) — delegation will fail until they are fixed.")
+    print(f"\n{len(problems)} problem(s) — delegation will fail or route to the wrong family.")
     sys.exit(1)
-print(f"OK    {len(profiles)} paseo profiles, {len(agent_files)} pi agents, {len(cat)} router models — all pins resolve.")
+print(
+    f"OK    {len(profiles)} paseo profiles, {len(agent_files)} pi agents, {len(cat)} router models"
+    + (f", {len(warnings)} warning(s)" if warnings else "")
+    + " — all pins resolve."
+)
 PY
