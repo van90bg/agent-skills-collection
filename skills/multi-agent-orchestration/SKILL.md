@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.2"
+  version: "1.3"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -50,6 +50,13 @@ cores, limited RAM (the exact figures belong to machine-level memory, not to thi
      the OOM killer shoot down background processes.
    - **Parallel exception:** a two-head technical debate is read-only — it spends inference tokens only
      and no local CPU/RAM, so the two heads may run concurrently.
+3. **Check the model budget before you fan out.** Spend one cheap probe per model you are about to use,
+   then dispatch. A phase that dies on a rate limit wastes the turn and — worse — tempts the Lead into
+   writing the answer itself, which rule 1 forbids.
+   - Free tiers and trial keys hit `429` on a schedule, not on demand. On a quota error: switch model or
+     provider once, disclose the substitution, and never retry the same exhausted tier in a loop.
+   - Never let a head "work shorthanded" without saying so in the final report; a synthesised answer that
+     silently drops a phase is worse than a short report that names the gap.
 
 ## 2. The Five-Phase Pipeline
 
@@ -232,6 +239,7 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 | 8 | Docs, progress log and version were updated in the same commit |
 | 9 | The harness model (1/2/3) was chosen from the tool schema actually exposed, not from the harness name |
 | 10 | Tool names were read from the live schema, including any `mcp__<server>__<tool>` namespacing |
+| 11 | Each model was probed before dispatch, and every quota-driven substitution is disclosed in the report |
 
 ## References
 
