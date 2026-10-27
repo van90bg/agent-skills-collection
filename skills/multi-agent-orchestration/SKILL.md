@@ -199,6 +199,38 @@ So list what the provider really serves (`curl -s "$BASE/v1/models" | jq -r '.da
 real name*. Do not invent a `group/<adjective>` because it looks consistent with its neighbours; one
 probe per pin (`pi -p --model <pin> "reply OK"`) is cheaper than a phase that dies mid-pipeline.
 
+#### Surviving model / provider churn
+
+Three things are hard-coded and **none of them is edited by picking a model for the *current* agent** in a
+daemon UI:
+
+1. `daemon.agentProfiles[].provider` + `.model` + `.thinkingOptionId` (Paseo)
+2. the `model:` line in each `~/.pi/agent/agents/*.md`
+3. the routing-group ids those two point at (`group/glm-hard`, `group/glm-free`, `group/alt-stack`,
+   `group/deepcoding`, …) and the group's `levels` list
+
+| You change | Does delegation still work? |
+|---|---|
+| The Lead agent's own model (per-agent picker) | ✅ profiles and agent files are untouched — children keep their own pins |
+| A profile's model / thinking level | ✅ if the id is real for `provider: pi`; a typed id still routes even when Pi's picker (a snapshot) does not list it |
+| Magpie routing-group **members** | ✅ `routing: "order"` fails over to the next member |
+| Magpie routing-group **id** renamed or deleted | ❌ every pin pointing at it dies with `404 … knows no model` |
+| `agents.providers.pi.enabled = false` in the Paseo config | ❌ all roles are `provider: pi` — nothing launches |
+| The Lead switched to another provider (opencode / codex / …) | ✅ MCP is injected per harness, so `create_agent` still works; only the Pi-specific notes above stop applying |
+| A group's `levels` narrowed | ⚠️ a profile whose `thinkingOptionId` fell out of the list fails on launch (`alt-stack` has no `medium`) |
+
+After any of those changes, audit every pin in one shot instead of discovering the break at Phase 2:
+
+```bash
+bash scripts/audit-pins.sh        # exit 0 = all pins resolve; exit 1 = names the dead pin + a suggestion
+```
+
+It checks each profile's provider against `agents.providers.<name>.enabled`, each model id against the live
+`/v1/models`, each thinking level against that model's `reasoning_levels`, and that every profile id has a
+Pi agent twin. Pi's own `models.json` is **metadata only**: an id it does not list still routes (Pi warns
+`Using custom model id`), so the router — not `models.json` — is the source of truth; add new ids to
+`models.json` anyway to keep context-window and thinking-level handling correct.
+
 #### When the MCP tools are not in the declared tool list
 
 A Paseo-hosted Pi session gets `mcp__paseo__create_agent`, `mcp__paseo__list_profiles`,
@@ -301,6 +333,7 @@ gets silently skipped.
 
 ## References
 
+- `scripts/audit-pins.sh` — one-shot audit of every profile/agent model pin against the live router
 - `../verify-subagent-claims/SKILL.md` — re-derive subagent claims before trusting them
 - `../audit-report-format/SKILL.md` — canonical report contract for the Phase 4 output
 - `../writing-plans/SKILL.md` — how to write the Phase 1 plan
