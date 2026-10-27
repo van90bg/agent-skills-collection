@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.3"
+  version: "1.4"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -165,6 +165,61 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
   Verify with the parent stripped of its own read tools, so the facts can only come from a child:
   `pi -p --tools subagent "use the subagent tool with agent scout to report X with file:line"`.
 
+#### Role ids are the contract — one name per role, on every surface
+
+The phase ids in §2 (`se-planner`, `se-coder`, `se-tester`, `se-reviewer`, `se-documenter`, plus
+`se-devops` for `environment` findings and the debate heads) must be the **same string** on every surface
+that can launch them. Otherwise the Lead writes a delegation the harness cannot resolve — the child never
+starts and the pipeline dies at Phase 1. Keep one row per role and reconcile it when either surface moves:
+
+| Phase / role | Paseo profile id | Pi agent file (`~/.pi/agent/agents/`) | Bash fallback |
+|---|---|---|---|
+| 1 planner (read-only) | `se-planner` | `se-planner.md` | `paseo run --provider pi/<model> --title plan "…"` |
+| 2 coder | `se-coder` | `se-coder.md` | same, `--title code` |
+| 3 tester | `se-tester` | `se-tester.md` | same, `--title test` |
+| 4 reviewer (read-only) | `se-reviewer` | `se-reviewer.md` | same, `--title review` |
+| 5 documenter | `se-documenter` | `se-documenter.md` | same, `--title docs` |
+| `environment` routing | `se-devops` | `se-devops.md` | same, `--title env` |
+| debate head 1 — systems | `debate-h1-systems` | `debate-h1-systems.md` | same, `--title h1` |
+| debate head 2 — adversarial | `debate-h2-adversarial` | `debate-h2-adversarial.md` | same, `--title h2` |
+| debate head 3 — pragmatism (tie-break only) | `debate-h3-pragmatism` | `debate-h3-pragmatism.md` | same, `--title h3` |
+| Lead (this session) | `lead-coordinator` | — | — |
+
+#### Probe the model pin before the first delegation
+
+A `model:` line in a Pi agent file, or a `model` in a Paseo profile, is a **claim about the provider's
+catalogue**, and a stale claim fails instantly and loudly — the child never starts:
+
+```
+404: magpie knows no model "group/free"; did you mean group/glm-free …?
+```
+
+So list what the provider really serves (`curl -s "$BASE/v1/models" | jq -r '.data[].id'`, or
+`pi --list-models`) and match the pin to an id that is actually there, *including the routing group's
+real name*. Do not invent a `group/<adjective>` because it looks consistent with its neighbours; one
+probe per pin (`pi -p --model <pin> "reply OK"`) is cheaper than a phase that dies mid-pipeline.
+
+#### When the MCP tools are not in the declared tool list
+
+A Paseo-hosted Pi session gets `mcp__paseo__create_agent`, `mcp__paseo__list_profiles`,
+`mcp__paseo__send_agent_prompt`, `mcp__paseo__get_agent_status`, … — but depending on the Pi build they are
+**codemode-only**: callable from a `codemode` script via `ALL_TOOLS` / `searchTools("agent")` /
+`describeTool(...)`, and absent from the top-level tool list. Never conclude "the tool does not exist"
+from the declared list alone; enumerate the codemode tool namespace first. If the server is genuinely
+unreachable, drop to the bash fallback, which needs no MCP at all:
+
+```bash
+paseo run --provider pi/magpie/group/glm-hard --thinking high --title "phase-1-plan" \
+  --label role=se-planner "…task…"      # waits for completion, prints agent id + status only
+paseo logs <id>                          # the child's transcript — final answer on the last line
+paseo ls --label role=se-planner         # find a run started with --no-wait
+paseo inspect <id>                       # status, model, token usage, parent agent
+```
+
+`paseo run` does **not** print the answer — it returns the table row (`agent id / status`). Always read the
+child's output back with `paseo logs <id>`; treating an empty `run` result as "no answer" is how a phase
+gets silently skipped.
+
 ### Model 2 — Mode / role switching inside one session
 - **Signal:** the harness runs a single chat session but can switch persona/mode with permission limits.
 - **Mechanism:** load the role definitions from the config surface the harness actually reads, then switch
@@ -175,7 +230,7 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 |---|---|---|
 | Roo-Code / Cline | `.roomodes` at the repo root | roles live in `customModes`; read-only boundaries are enforced by `groups: ["read"]`; keep a repo test so the file cannot silently drift |
 | OpenCode | the `agent` key in `opencode.json`, or `~/.config/opencode/agents/<role>.md` | if the roles are not declared here, Model 2 cannot run — fall back to Model 3 |
-| Paseo | `daemon.agentProfiles` in `~/.paseo/config.json`, invoked via `create_agent` / `send_agent_prompt` | profiles ship ready-made; still pass the correct `modeId` per role |
+| Paseo | `daemon.agentProfiles` in `~/.paseo/config.json`, invoked via `create_agent` / `send_agent_prompt` | profiles ship ready-made and are the SSOT for role ids; `create_agent` has no `profile` parameter — materialize one as `provider: "<provider>/<model>"` plus `settings.thinkingOptionId` / `settings.modeId`, and check the profile's model still exists in the provider catalogue |
 
 - **`.roomodes` is not a shared SSOT.** It is a Roo-Code/Cline format; OpenCode and Pi.dev never read it.
   Under those harnesses it is documentation only — use that harness's own surface, or fall back to Model 3.
@@ -240,6 +295,9 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 | 9 | The harness model (1/2/3) was chosen from the tool schema actually exposed, not from the harness name |
 | 10 | Tool names were read from the live schema, including any `mcp__<server>__<tool>` namespacing |
 | 11 | Each model was probed before dispatch, and every quota-driven substitution is disclosed in the report |
+| 12 | Every role id used in a delegation exists on the surface that will launch it (Paseo profile **and** Pi agent file use the same string) |
+| 13 | Every `model:` pin names an id the provider actually serves — verified against `/v1/models`, not remembered |
+| 14 | Before declaring a delegation tool missing, the codemode namespace (`ALL_TOOLS` / `searchTools`) and the `paseo` CLI fallback were both checked |
 
 ## References
 
