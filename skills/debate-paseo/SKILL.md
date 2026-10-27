@@ -4,7 +4,7 @@ description: Paseo-native multi-head deliberation. Three independent heads, crit
 license: MIT
 metadata:
   author: van90bg
-  version: "1.0"
+  version: "1.1"
   category: core
   triggers: ["debate-paseo", "multi-head deliberation", "converge", "red-team", "paseo agents"]
 user-invocable: true
@@ -20,7 +20,10 @@ dispatch, collect, verify evidence, parse verdicts, and synthesize.
 
 Paseo tool names below are the MCP names (`create_agent`,
 `send_agent_prompt`, `get_agent_activity`, ...). Some providers expose them with
-a `paseo_` prefix (`paseo_create_agent`); use whichever names are available.
+a `paseo_` prefix (`paseo_create_agent`); harnesses given the Paseo MCP server
+namespace them (`mcp__paseo__create_agent` in Pi). Match by the trailing name and
+use whichever form the live schema shows — read the schema before the first call
+instead of assuming one form.
 
 ## Modes
 
@@ -65,26 +68,35 @@ Optional: `/debate-paseo --heads 2 <question>` to force two heads,
 
 ## Head roster (fallback when no profiles exist)
 
-| Head | Provider/model | Mode | Lens |
+Profiles beat this roster. Without profiles, build the roster at runtime: three
+heads from three **different provider families** that `list_providers` reports as
+`available`, with each `provider/model` pinned from `list_models`.
+
+| Head | Provider family | Mode | Lens |
 |---|---|---|---|
-| 1 | `debate-head-opencode/opencode/minimax-m3.1-flash-free` | `plan` | systems, implementation, failure modes |
-| 2 | `antigravity/gemini-3.8-flash-high` | `full-access` | edge cases, adversarial reading, missing evidence |
-| 3 | `qoder/qfmodel` | `plan` | pragmatism, verification, cost/benefit |
+| 1 | strongest available coding family | `plan` | systems, implementation, failure modes |
+| 2 | a different family from head 1 | `plan` | edge cases, adversarial reading, missing evidence |
+| 3 | a third family, else a different model from family 1 or 2 | `plan` | pragmatism, verification, cost/benefit |
 
-Fallbacks, in order:
+Rules for the roster:
 
-- Head 1 unavailable: `opencode/opencode/deepseek-v4.1-flash-free`.
-- Head 2 unavailable: `opencode/opencode/deepseek-v4.1-flash-free` with a
-  different lens, or another available non-OpenCode provider.
-- Head 3 unavailable: `opencode/opencode/minimax-m3.1-flash-free`.
+- Never copy a model id out of this file; model ids move. `list_providers` and
+  `list_models` are the only source, and every substitution gets disclosed.
+- Drop every provider whose status is not `available`.
+- Prefer `plan` (read-only) for all heads. A head created with `build` or
+  `full-access` **can** write files, so the no-edit suffix in its prompt is the
+  only guard — never drop it.
+- A provider that reports no `modes` (single-mode harnesses) cannot take
+  `modeId`: omit `settings.modeId` for it instead of inventing a value.
+- Fewer than three families available: run two heads and say so.
 
 Do not use the same model for every head when alternatives exist. Do not let a
 head choose its own model. Pin the provider/model at creation and keep it for
 the whole debate. Change a model mid-debate only to recover from a provider
 failure, and disclose it.
 
-`debate-head-opencode` is configured with Paseo tools disabled. Heads 2 and 3
-still receive Paseo tools; their prompts must explicitly forbid delegation.
+A head that also receives Paseo tools must be told explicitly not to delegate —
+nesting debates behind a head breaks the chair's sequential accounting.
 
 ## Hard rules
 

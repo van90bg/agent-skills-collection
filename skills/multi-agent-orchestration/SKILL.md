@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.0"
+  version: "1.1"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -28,6 +28,10 @@ metadata:
 - **Never hardcode another repo's numbers here.** Gate counts, script names, template paths and section
   numbers quoted in this file are *placeholders* — resolve them from the current repo's `AGENTS.md` and
   `package.json`, not from memory.
+- **The core is harness-agnostic; only the execution layer adapts.** The five phases, the approval gate,
+  the sequential discipline, the four-part evidence contract, the bug classes and the two-head debate are
+  invariant. Which tools you call to run them is the only thing that changes — see §5, and decide the
+  model from the tool schema this session actually exposes, not from the harness's name.
 - **The plan gate is human-in-the-loop.** The trigger threshold follows repo law (typically: ≥3 source
   files touched, or a change to API/UI/flow/metrics, or any P0/P1). When the repo requires a plan first,
   you **must stop and wait** for the user's approval (`duyệt` / `LGTM` / `OK`) before writing code.
@@ -128,10 +132,15 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 
 > **Golden rule:** never call a tool by assumption. An agent may call only the tools that actually exist
 > in the tool schema the current harness exposes to this session.
+>
+> **Match tools by the trailing name, never by the prefix.** The same Paseo tool appears as `create_agent`
+> (Paseo's own agents), `paseo_create_agent` (some providers) or `mcp__paseo__create_agent` (a harness
+> given the Paseo MCP server). Read the schema before the first delegation and use the names you see.
 
 ### Model 1 — Subagent-native harness
 - **Signal:** the harness exposes a tool that creates independent child sessions/subagents (e.g. Paseo
-  `create_agent`, Antigravity CLI `invoke_subagent`).
+  `create_agent`, Antigravity CLI `invoke_subagent`, or a Pi session that Paseo spawned — the Paseo
+  supervisor injects its MCP tools into that session even when `pi mcp list` reports none configured).
 - **Mechanism:** read the role definitions from whichever config surface the harness really reads (or use
   its profile-listing tool); delegate phases strictly in order; force read-only mode for the planner, the
   reviewer and both debate heads; judge each subagent's evidence before advancing a phase.
@@ -157,8 +166,10 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
   cannot read it. Drift between surfaces is a known risk: review both by hand whenever either changes.
 
 ### Model 3 — Single-agent sequential fallback
-- **Signal:** the harness has neither a subagent tool nor mode switching (e.g. Pi.dev, Aider, a plain CLI
-  chat).
+- **Signal:** the harness has neither a subagent tool nor mode switching (e.g. a **standalone** `pi` CLI
+  session with no Paseo MCP server, Aider, a plain CLI chat). Pi ships no native subagent tool and no mode
+  switch, so it lands here *unless* something hands it a subagent tool — Paseo does exactly that. Inspect
+  the tool schema before choosing: an empty `pi mcp list` does not rule Model 1 out.
 - **Mechanism:** the same agent runs the whole pipeline by context-shifting between roles, and must hold
   each role's boundary honestly:
   - Phase 1 — act as the planner (read-only; plan per the repo template; run the plan gate).
@@ -178,6 +189,15 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 - **Docs to sync in the same commit:** `PROGRESS.md` + `README.md` + `SPECIFICATION.md` + `AGENTS.md`.
 - **Role surfaces present:** `.roomodes` with 7 roles (guarded by `tests/roomodes-integrity.test.js`) and
   10 Paseo `daemon.agentProfiles`; OpenCode declares only `debate-head`, so OpenCode falls back to Model 3.
+- **Skill discovery is per harness, and the copies drift.** Paseo installs `/paseo`, `/paseo-handoff`,
+  `/paseo-committee` and `/paseo-advisor` into each harness's own skill directory and refreshes them when
+  the daemon starts — never patch those files by hand. This policy and `debate-paseo` live in the
+  `agent-skills-collection` repo and are symlinked into `~/.agents/skills/`, which is where Pi looks;
+  OpenCode is configured to read `~/.config/opencode/skills/`. Check the inventory per harness instead of
+  assuming the skill is visible everywhere.
+- **Read-only drift measured per profile:** the debate heads and the Lead Coordinator run with
+  `modeId: build` / `full-access`, so they *can* write. The no-edit suffix in the prompt is the only
+  guard — keep it in every analysis-only delegation.
 - **Hardware:** Intel Pentium Silver J5005 (4 cores, 15 GB RAM) shared with the self-hosted `dietpi-dev`
   CI runner — the reason the sequential rule is strict.
 
@@ -193,6 +213,8 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 | 6 | The tester reported facts only; root cause came from the coder or reviewer |
 | 7 | Read-only/write drift between role config surfaces was checked by hand |
 | 8 | Docs, progress log and version were updated in the same commit |
+| 9 | The harness model (1/2/3) was chosen from the tool schema actually exposed, not from the harness name |
+| 10 | Tool names were read from the live schema, including any `mcp__<server>__<tool>` namespacing |
 
 ## References
 
