@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.4"
+  version: "1.5"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -169,21 +169,53 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 
 The phase ids in §2 (`se-planner`, `se-coder`, `se-tester`, `se-reviewer`, `se-documenter`, plus
 `se-devops` for `environment` findings and the debate heads) must be the **same string** on every surface
-that can launch them. Otherwise the Lead writes a delegation the harness cannot resolve — the child never
-starts and the pipeline dies at Phase 1. Keep one row per role and reconcile it when either surface moves:
+that can launch them: the Paseo profile, the Pi agent file, **and the magpie routing group**. Otherwise the
+Lead writes a delegation the harness cannot resolve — the child never starts and the pipeline dies at
+Phase 1. Keep one row per role and reconcile it when any surface moves:
 
-| Phase / role | Paseo profile id | Pi agent file (`~/.pi/agent/agents/`) | Bash fallback |
-|---|---|---|---|
-| 1 planner (read-only) | `se-planner` | `se-planner.md` | `paseo run --provider pi/<model> --title plan "…"` |
-| 2 coder | `se-coder` | `se-coder.md` | same, `--title code` |
-| 3 tester | `se-tester` | `se-tester.md` | same, `--title test` |
-| 4 reviewer (read-only) | `se-reviewer` | `se-reviewer.md` | same, `--title review` |
-| 5 documenter | `se-documenter` | `se-documenter.md` | same, `--title docs` |
-| `environment` routing | `se-devops` | `se-devops.md` | same, `--title env` |
-| debate head 1 — systems | `debate-h1-systems` | `debate-h1-systems.md` | same, `--title h1` |
-| debate head 2 — adversarial | `debate-h2-adversarial` | `debate-h2-adversarial.md` | same, `--title h2` |
-| debate head 3 — pragmatism (tie-break only) | `debate-h3-pragmatism` | `debate-h3-pragmatism.md` | same, `--title h3` |
-| Lead (this session) | `lead-coordinator` | — | — |
+| Phase / role | Paseo profile id | Pi agent file (`~/.pi/agent/agents/`) | magpie routing group | Bash fallback |
+|---|---|---|---|---|
+| 1 planner (read-only) | `se-planner` | `se-planner.md` | `group/se-planner` | `paseo run --provider pi/magpie/group/se-planner --title plan "…"` |
+| 2 coder | `se-coder` | `se-coder.md` | `group/se-coder` | same, `--title code` |
+| 3 tester | `se-tester` | `se-tester.md` | `group/se-tester` | same, `--title test` |
+| 4 reviewer (read-only) | `se-reviewer` | `se-reviewer.md` | `group/se-reviewer` | same, `--title review` |
+| 5 documenter | `se-documenter` | `se-documenter.md` | `group/se-documenter` | same, `--title docs` |
+| `environment` routing | `se-devops` | `se-devops.md` | `group/se-devops` | same, `--title env` |
+| debate head 1 — systems | `debate-h1-systems` | `debate-h1-systems.md` | `group/debate-h1-systems` | same, `--title h1` |
+| debate head 2 — adversarial | `debate-h2-adversarial` | `debate-h2-adversarial.md` | `group/debate-h2-adversarial` | same, `--title h2` |
+| debate head 3 — pragmatism (tie-break only) | `debate-h3-pragmatism` | `debate-h3-pragmatism.md` | `group/debate-h3-pragmatism` | same, `--title h3` |
+| recon (optional) | `scout` | `scout.md` | `group/scout` | same, `--title recon` |
+| Lead (this session) | `lead-coordinator` | — | `group/lead-coordinator` | — |
+
+#### One routing group per role — capability is encoded in the group, not in the role name
+
+A role id that also names a magpie routing group (`group/<role-id>`) makes the model policy editable in one
+place, without touching a single agent file or profile:
+
+```bash
+magpie group set se-coder models=workbuddy-ai/deepseek-v4.1-flash,tokenharbor/deepseek-v4.1-flash:free,…
+magpie group set se-planner models=autoclaw/zai_glm-5.3-flash,workbuddy-ai/glm-5.3-flash,…
+magpie groups                       # every role's chain, in order
+```
+
+Two consequences worth stating out loud:
+
+- **Order is policy.** `routing=order` walks the list front to back, so the first member is the role's
+  primary and the rest are failover. Put a quota-exhausted model *last*, not first: a member that answers
+  `429 … free quota used up` costs a wasted round-trip on every single call (measured: `tries=3` before the
+  first usable member, versus `tries=1` after reordering).
+- **Family separation is a group decision.** “GLM plans, DeepSeek codes” is expressed by putting only GLM
+  models in `se-planner` and only DeepSeek models first in `se-coder`. Never enforce it by renaming a role or
+  by editing an agent file per model change.
+
+Verify the policy landed, don't assume it — the router records which member actually served each call:
+
+```bash
+magpie usage --csv 7d | grep 'group/se-'     # requested_model=group/se-coder  served_model=deepseek-v4.1-flash
+```
+
+A role whose requests show a *different family* than its group intends is a group-ordering bug, not a
+model-quality judgement.
 
 #### Probe the model pin before the first delegation
 
@@ -206,8 +238,7 @@ daemon UI:
 
 1. `daemon.agentProfiles[].provider` + `.model` + `.thinkingOptionId` (Paseo)
 2. the `model:` line in each `~/.pi/agent/agents/*.md`
-3. the routing-group ids those two point at (`group/glm-hard`, `group/glm-free`, `group/alt-stack`,
-   `group/deepcoding`, …) and the group's `levels` list
+3. the routing group behind each of those pins (`group/<role-id>`) and the group's `levels` list
 
 | You change | Does delegation still work? |
 |---|---|
@@ -217,7 +248,7 @@ daemon UI:
 | Magpie routing-group **id** renamed or deleted | ❌ every pin pointing at it dies with `404 … knows no model` |
 | `agents.providers.pi.enabled = false` in the Paseo config | ❌ all roles are `provider: pi` — nothing launches |
 | The Lead switched to another provider (opencode / codex / …) | ✅ MCP is injected per harness, so `create_agent` still works; only the Pi-specific notes above stop applying |
-| A group's `levels` narrowed | ⚠️ a profile whose `thinkingOptionId` fell out of the list fails on launch (`alt-stack` has no `medium`) |
+| A group's `levels` narrowed | ⚠️ a profile whose `thinkingOptionId` fell out of the list fails on launch (a group with `levels=low,high,xhigh,max` has no `medium`) |
 
 After any of those changes, audit every pin in one shot instead of discovering the break at Phase 2:
 
@@ -241,7 +272,7 @@ from the declared list alone; enumerate the codemode tool namespace first. If th
 unreachable, drop to the bash fallback, which needs no MCP at all:
 
 ```bash
-paseo run --provider pi/magpie/group/glm-hard --thinking high --title "phase-1-plan" \
+paseo run --provider pi/magpie/group/se-planner --thinking high --title "phase-1-plan" \
   --label role=se-planner "…task…"      # waits for completion, prints agent id + status only
 paseo logs <id>                          # the child's transcript — final answer on the last line
 paseo ls --label role=se-planner         # find a run started with --no-wait

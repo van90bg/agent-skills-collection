@@ -109,6 +109,13 @@ for p in profiles:
         continue
     router_id = model.split("/", 1)[1]
     check_model(cat, router_id, where, p.get("thinkingOptionId"))
+    # convention: a role's model is its own routing group, so policy lives in one place
+    expected = f"group/{pid}"
+    if router_id != expected:
+        problems.append(
+            f"{where}: model '{router_id}' should be '{expected}' "
+            f"(one routing group per role id — see SKILL.md §5)"
+        )
 
 # 2. Pi agent files
 agent_files = sorted(glob.glob(os.path.join(PI_DIR, "agents", "*.md")))
@@ -128,6 +135,12 @@ for path in agent_files:
         continue
     router_id = model.split("/", 1)[1]
     check_model(cat, router_id, f"pi agent '{label}'")
+    expected = f"group/{label}"
+    if router_id != expected:
+        problems.append(
+            f"pi agent '{label}': model '{router_id}' should be '{expected}' "
+            f"(one routing group per role id — see SKILL.md §5)"
+        )
 
 # 3. Cross-surface id coverage: every Paseo profile should have a pi agent twin
 pi_names = {
