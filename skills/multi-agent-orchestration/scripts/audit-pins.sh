@@ -8,7 +8,10 @@
 #   2. Pi agent files (~/.pi/agent/agents/*.md) -> same two checks
 #   3. Cross-surface coverage      -> every profile id has a pi agent twin
 #   4. --probe                     -> ask each group member what model it *really* serves
-#                                     (an id can lie: autoclaw/zai_auto serves deepseek-vision-exp)
+#                                     (an id can lie: autoclaw/zai_auto serves deepseek-vision-exp).
+#                                     A deliberate exception is declared in
+#                                     ~/.config/magpie/audit-pins.exceptions, one line per member:
+#                                       group/se-coder autoclaw/zai_auto -> deepseek
 #
 # Usage:
 #   audit-pins.sh                 structural checks only (fast, no tokens)
@@ -87,6 +90,36 @@ def norm(name: str) -> str:
     return s
 
 
+def load_exceptions():
+    """Deliberate 'this id serves that family' declarations.
+
+    Line format:  <group id> <member id> -> <expected substring of the served model>
+    Blank lines and lines starting with '#' are ignored.
+    """
+    paths = [
+        os.path.expanduser("~/.config/magpie/audit-pins.exceptions"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "audit-pins.exceptions"),
+    ]
+    rules = {}
+    for path in paths:
+        if not os.path.exists(path):
+            continue
+        for raw in open(path, encoding="utf-8"):
+            line = raw.split("#", 1)[0].strip()
+            if not line or "->" not in line:
+                continue
+            left, expected = line.split("->", 1)
+            parts = left.split()
+            if len(parts) < 2:
+                continue
+            gid, member = parts[0].removeprefix("group/"), parts[1]
+            rules[(gid, member)] = expected.strip().lower()
+    return rules
+
+
+EXCEPTIONS = load_exceptions()
+
+
 def probe_member(model: str):
     """Ask the router what this member actually serves. Returns (served, error)."""
     base = router_base()
@@ -146,11 +179,20 @@ def probe_groups(cat):
                         f"'{member}' to the end of the list"
                     )
                 continue
+            expected = EXCEPTIONS.get((gid, member))
+            if expected:
+                if expected not in (served or "").lower():
+                    problems.append(
+                        f"group/{gid} member '{member}' is declared to serve a '{expected}' model but "
+                        f"actually serves '{served}' — the exception no longer holds"
+                    )
+                continue
             if norm(served or "") != norm(member) and norm(served or "") not in norm(member) \
                     and norm(member) not in norm(served or ""):
                 problems.append(
                     f"group/{gid} member '{member}' actually serves '{served}' — the id lies, so the "
-                    f"group's family policy is not what it says"
+                    f"group's family policy is not what it says. Declare it in "
+                    f"~/.config/magpie/audit-pins.exceptions if that is deliberate"
                 )
 
 

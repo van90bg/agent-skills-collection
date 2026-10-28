@@ -1,0 +1,9 @@
+# Deliberate "this model id serves a different family" declarations for audit-pins.sh --probe.
+#
+# Format:  <group id> <member id> -> <substring the served model must contain>
+# Copy to ~/.config/magpie/audit-pins.exceptions and keep only what is true on that machine.
+# Without a line here, a member whose served model differs from its id is a FAIL.
+
+# AutoClaw's "auto" router is not GLM despite the autoclaw/ prefix: it answers as
+# deepseek/deepseek-v4-flash-vision-exp, which is why it is kept as a DeepSeek fallback in se-coder.
+group/se-coder autoclaw/zai_auto -> deepseek

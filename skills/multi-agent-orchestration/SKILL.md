@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.6"
+  version: "1.7"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -235,7 +235,8 @@ What does *not* follow automatically:
 2. **Thinking levels are per member and get downgraded silently.** A group's `levels` is what agents are
    *offered*; a member that lacks the level is sent its nearest (measured: profile pinned `xhigh`, the
    served request logged `effort=high` on a member whose max is `high`). If a role's reasoning level is part
-   of the contract, put a member that actually supports it first.
+   of the contract, put a member that actually supports it first — or set `effort=agent` so the profile's
+   level is the one that gets sent (see the classifier section below).
 3. **A dead primary costs a round-trip on every call.** Quota-exhausted members answer `429` before
    failover; keep them last or drop them.
 4. **Advertised context can shrink.** A group's context is derived from its members, so adding a small-context
@@ -245,6 +246,39 @@ Structural pins (does the id exist, is it the role's own group, is the thinking 
 profile have a Pi twin) are cheap to re-check and catch 1, 3 and 4 partially: run `audit-pins.sh` after any
 member edit; run it with `--probe` when you changed a *provider*, not just a model.
 
+A member whose id lies **on purpose** (kept because the family is what matters, not the label) is declared
+once, next to the machine, and the probe then checks the declared family instead of the label:
+
+```bash
+# ~/.config/magpie/audit-pins.exceptions   (template: scripts/audit-pins.exceptions)
+group/se-coder autoclaw/zai_auto -> deepseek      # AutoClaw's auto router answers as deepseek-v4-flash-vision-exp
+```
+
+Without that line the probe fails the member; with a line whose expectation is wrong, it fails too
+(`declared to serve a 'glm' model but actually serves …`) — so the exception cannot rot silently.
+
+#### Effort can be delegated to a classifier — decide deliberately
+
+`effort=auto` hands the per-turn reasoning level to a classifier model instead of the profile:
+
+```bash
+magpie group set se-coder effort=auto classifier=opencode-zen/jev-1.13-free
+magpie group set se-reviewer effort=agent     # opt one role back to its profile's thinkingOptionId
+```
+
+What that actually means, measured on this pipeline:
+
+- The classifier is a **routing-only model** — it holds no conversation (`only decides a routing group's
+  model and effort; it holds no conversation`), so it can never be a group *member*.
+- It is called **once per turn**, not per request: 3 classifier calls covered 6 group calls in one probe, and
+  each turn's follow-ups reused the decision (`kind=routing` rows in `magpie usage --csv`).
+- The chosen level **overrides the profile's `thinkingOptionId`**: a trivial “reply with X” turn was sent
+  `effort=low` on a role pinned `high`, and a multi-file comparison turn was sent `effort=high`. So
+  `thinkingOptionId` in a Paseo profile only governs a group whose `effort=agent`.
+- Keep at least one deterministic role if the level is part of an audit contract (reviewer, debate heads):
+  a classifier that answers “low” to a subtle review question quietly weakens the gate.
+
+#### Probe the model pin before the first delegation
 #### Probe the model pin before the first delegation
 
 A `model:` line in a Pi agent file, or a `model` in a Paseo profile, is a **claim about the provider's
