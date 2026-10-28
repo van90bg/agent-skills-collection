@@ -6,8 +6,9 @@
 #   1. Paseo daemon.agentProfiles  -> provider enabled + model id exists + thinking level supported
 #                                    + the model is the role's own routing group (group/<role-id>)
 #   2. Pi agent files (~/.pi/agent/agents/*.md) -> same two checks
-#   3. Cross-surface coverage      -> every profile id has a pi agent twin
-#   4. --probe                     -> ask each group member what model it *really* serves
+#   3. Cross-surface thinking      -> profile thinkingOptionId == agent file `thinking:`
+#   4. Cross-surface coverage      -> every profile id has a pi agent twin
+#   5. --probe                     -> ask each group member what model it *really* serves
 #                                     (an id can lie: autoclaw/zai_auto serves deepseek-vision-exp).
 #                                     A deliberate exception is declared in
 #                                     ~/.config/magpie/audit-pins.exceptions, one line per member:
@@ -284,7 +285,34 @@ for path in agent_files:
             f"(one routing group per role id — see SKILL.md §5)"
         )
 
-# 3. Cross-surface id coverage: every Paseo profile should have a pi agent twin
+# 3. Cross-surface thinking drift: the profile's thinkingOptionId must equal the
+#    agent file's `thinking:` line, or the same role reasons differently depending
+#    on which launcher started it.
+agent_thinking = {}
+for path in agent_files:
+    text = open(path, encoding="utf-8").read()
+    name = re.search(r"^name:\s*(\S+)\s*$", text, re.M)
+    lvl = re.search(r"^thinking:\s*(\S+)\s*$", text, re.M)
+    if name:
+        agent_thinking[name.group(1)] = lvl.group(1) if lvl else None
+for p in profiles:
+    pid = p.get("id")
+    profile_level = p.get("thinkingOptionId")
+    file_level = agent_thinking.get(pid)
+    if pid not in agent_thinking:
+        continue
+    if profile_level and not file_level:
+        problems.append(
+            f"'{pid}': profile pins thinkingOptionId={profile_level} but the agent file has no "
+            f"`thinking:` line — the Pi path would run at the caller's level"
+        )
+    elif file_level and profile_level and profile_level != file_level:
+        problems.append(
+            f"'{pid}': profile thinkingOptionId={profile_level} but agent file thinking={file_level} — "
+            f"the role reasons differently depending on the launcher"
+        )
+
+# 4. Cross-surface id coverage: every Paseo profile should have a pi agent twin
 pi_names = {
     re.search(r"^name:\s*(\S+)\s*$", open(f, encoding="utf-8").read(), re.M).group(1)
     for f in agent_files

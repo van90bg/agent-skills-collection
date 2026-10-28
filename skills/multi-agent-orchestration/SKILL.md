@@ -4,7 +4,7 @@ description: Orchestration policy for multi-agent (Enterprise Ops) work and evid
 license: MIT
 metadata:
   author: van90bg
-  version: "1.8"
+  version: "1.9"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -154,13 +154,30 @@ two-head debate) is **harness-agnostic and invariant**. Only the execution layer
 - **Pi without Paseo, still Model 1:** the `pi` npm package ships `examples/extensions/subagent` — a tool
   named `subagent` with single / parallel / chain modes where every child is a **separate `pi` process**
   with its own context, driven by agent files in `~/.pi/agent/agents/*.md` (a `model:` line pins the
-  child's model; omit it to inherit). Wire it up without any MCP server:
+  child's model; omit it to inherit). Wire it up without any MCP server, **copying rather than symlinking**
+  so the two-line patch below survives a `pi update`:
 
   ```bash
   PKG="$(npm root -g)/@earendil-works/pi-coding-agent/examples/extensions/subagent"
   mkdir -p ~/.pi/agent/extensions/subagent ~/.pi/agent/agents
-  ln -sfn "$PKG/index.ts" "$PKG/agents.ts" ~/.pi/agent/extensions/subagent/
+  cp "$PKG/index.ts" "$PKG/agents.ts" ~/.pi/agent/extensions/subagent/
   ```
+
+  **Patch the copy so a role's reasoning level is not silently dropped.** The bundled example passes
+  `--thinking` only when the agent has *no* `model:` line, so every role that pins a model runs at the
+  caller's default level — which quietly breaks `effort=agent` routing groups (measured: a reviewer pinned
+  `xhigh` and a tester pinned `low` both sent `effort=high`). Two changes:
+
+  - `agents.ts`: accept `thinking?: string` in `AgentConfig`, read it from frontmatter, and emit it on the
+    discovered agent;
+  - `index.ts`, where the child's argv is built: `--thinking` takes `agent.thinking`, else the caller's
+    level when the child inherits the dispatch model, else nothing.
+
+  Then give every agent file a `thinking:` line that **matches its Paseo profile's `thinkingOptionId`** —
+  `audit-pins.sh` fails when the two disagree, because the same role must not reason differently depending
+  on which launcher started it. An edited extension is only loaded by a **new** `pi` process: the session
+  that was running when you patched it keeps the old argv builder, so re-test in a fresh process before
+  concluding the patch failed.
 
   Verify with the parent stripped of its own read tools, so the facts can only come from a child:
   `pi -p --tools subagent "use the subagent tool with agent scout to report X with file:line"`.
@@ -423,6 +440,7 @@ gets silently skipped.
 | 12 | Every role id used in a delegation exists on the surface that will launch it (Paseo profile **and** Pi agent file use the same string) |
 | 13 | Every `model:` pin names an id the provider actually serves — verified against `/v1/models`, not remembered |
 | 14 | Before declaring a delegation tool missing, the codemode namespace (`ALL_TOOLS` / `searchTools`) and the `paseo` CLI fallback were both checked |
+| 15 | Each role's reasoning level is identical on every launch surface (`thinking:` in the agent file == `thinkingOptionId` in the profile), and the level actually reached the wire (`effort=` in `magpie usage`) |
 
 ## References
 
