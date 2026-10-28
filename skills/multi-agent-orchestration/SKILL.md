@@ -1,10 +1,10 @@
 ---
 name: multi-agent-orchestration
-description: Orchestration policy for multi-agent (Enterprise Ops) work and evidence adjudication — Lead Coordinator, a five-phase pipeline with a mandatory plan-approval gate, sequential scheduling that protects single-board hardware, evidence-first findings (4 parts), four-class bug triage, two-head debate, and capability-based adapters for Paseo / OpenCode / Roo-Code / Cline / Pi.dev. Use when taking the Lead Coordinator role, delegating to subagents, or running a large audit/refactor that needs a plan gate.
+description: Orchestration policy for multi-agent (Enterprise Ops) work and evidence adjudication — Lead Coordinator, a five-phase pipeline with a mandatory plan-approval gate, sequential scheduling that protects single-board hardware, evidence-first findings (4 parts), four-class bug triage, two-head debate, and capability-based adapters for Paseo / OpenCode / Antigravity / Pi.dev. Use when taking the Lead Coordinator role, delegating to subagents, or running a large audit/refactor that needs a plan gate.
 license: MIT
 metadata:
   author: van90bg
-  version: "1.7"
+  version: "1.8"
   category: core
   triggers: ["orchestrate", "delegate", "multi-agent", "lead coordinator", "subagent", "audit", "refactor", "plan approval"]
 ---
@@ -353,15 +353,15 @@ gets silently skipped.
 
 | Harness | Config surface | Notes / constraints |
 |---|---|---|
-| Roo-Code / Cline | `.roomodes` at the repo root | roles live in `customModes`; read-only boundaries are enforced by `groups: ["read"]`; keep a repo test so the file cannot silently drift |
 | OpenCode | the `agent` key in `opencode.json`, or `~/.config/opencode/agents/<role>.md` | if the roles are not declared here, Model 2 cannot run — fall back to Model 3 |
+| Antigravity CLI | `~/.gemini/antigravity-cli/settings.json` (`model`, `agentMode`) | **no read-only mode exists** (Paseo starts it with `--dangerously-skip-permissions`), `thinkingOptions` is empty so the reasoning level is baked into the model id (`gemini-3.8-flash-high`), and it reads no per-role agent file — paste the role's prompt into the initial prompt |
 | Paseo | `daemon.agentProfiles` in `~/.paseo/config.json`, invoked via `create_agent` / `send_agent_prompt` | profiles ship ready-made and are the SSOT for role ids; `create_agent` has no `profile` parameter — materialize one as `provider: "<provider>/<model>"` plus `settings.thinkingOptionId` / `settings.modeId`, and check the profile's model still exists in the provider catalogue |
 
-- **`.roomodes` is not a shared SSOT.** It is a Roo-Code/Cline format; OpenCode and Pi.dev never read it.
-  Under those harnesses it is documentation only — use that harness's own surface, or fall back to Model 3.
 - **Read-only drift warning.** A role marked read-only on one surface may be write-enabled on another
   (e.g. a profile whose `modeId` is `build` or `full-access`). **Never infer a read-only boundary from the
-  role name** — state the prohibition explicitly in the role's prompt.
+  role name** — state the prohibition explicitly in the role's prompt. Measured example: Paseo's
+  `antigravity` provider exposes exactly one mode, `full-access` (`--dangerously-skip-permissions`), so a
+  planner launched there is *not* read-only no matter what the profile is called.
 - **No cross-surface sync gate is possible.** Global harness config lives outside the repo, so a CI test
   cannot read it. Drift between surfaces is a known risk: review both by hand whenever either changes.
 
@@ -388,8 +388,8 @@ gets silently skipped.
   machine check `npm run check:plan -- <file>` must print `PLAN-PASS`.
 - **Working branch:** `dev` (build and deploy from `dev`; `main` only accepts PRs).
 - **Docs to sync in the same commit:** `PROGRESS.md` + `README.md` + `SPECIFICATION.md` + `AGENTS.md`.
-- **Role surfaces present:** `.roomodes` with 7 roles (guarded by `tests/roomodes-integrity.test.js`) and
-  10 Paseo `daemon.agentProfiles`; OpenCode declares only `debate-head`, so OpenCode falls back to Model 3.
+- **Role surfaces present:** 10 Paseo `daemon.agentProfiles` and 10 Pi agent files sharing one role-id set;
+  OpenCode declares only `debate-head`, so OpenCode falls back to Model 3.
 - **Skill discovery is per harness, and the copies drift.** Paseo installs `/paseo`, `/paseo-handoff`,
   `/paseo-committee` and `/paseo-advisor` into each harness's own skill directory and refreshes them when
   the daemon starts — never patch those files by hand. This policy and `debate-paseo` live in the
